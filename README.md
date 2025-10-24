@@ -123,9 +123,9 @@ ViewCrafter can generate high-fidelity novel views from <strong>a single or spar
 
 ## ⚙️ Setup
 
-### 1. Clone ViewCrafter
+### 1. Clone Our ViewCrafter
 ```bash
-git clone https://github.com/Drexubery/ViewCrafter.git
+git clone https://github.com/hg-tc/viewcrafter_new.git
 cd ViewCrafter
 ```
 ### 2. Installation
@@ -148,48 +148,42 @@ wget https://download.europe.naverlabs.com/ComputerVision/DUSt3R/DUSt3R_ViTLarge
 > If you use a high PyTorch version (like torch 2.4), it may cause CUDA OOM error. Please refer to [these issues](https://github.com/Drexubery/ViewCrafter/issues/23#issuecomment-2396131121) for solutions.
 
 ## 💫 Inference 
-### 1. Command line
-### Single view novel view synthesis
-(1) Download pretrained [ViewCrafter_25](https://huggingface.co/Drexubery/ViewCrafter_25/blob/main/model.ckpt) and put the `model.ckpt` in `checkpoints/model.ckpt`. \
-(2) Run [inference.py](./inference.py) using the following script. Please refer to the [configuration document](docs/config_help.md) and [render document](docs/render_help.md) to set up inference parameters and camera trajectory. 
+### 从图片构建视频
+
 ```bash
-  sh run.sh
+  sh run_all.sh
 ```
-### Sparse view novel view synthesis
-(1) Download pretrained [ViewCrafter_25_sparse](https://huggingface.co/Drexubery/ViewCrafter_25_sparse/blob/main/model_sparse.ckpt) and put the `model_sparse.ckpt` in `checkpoints/model_sparse.ckpt`. ([ViewCrafter_25_sparse](https://huggingface.co/Drexubery/ViewCrafter_25_sparse/blob/main/model_sparse.ckpt) is specifically trained for the sparse view NVS task and performs better than [ViewCrafter_25](https://huggingface.co/Drexubery/ViewCrafter_25/blob/main/model.ckpt) on this task) \
-(2) Run [inference.py](./inference.py) using the following script. Adjust the `--bg_trd` parameter to clean the point cloud; higher values will produce a cleaner point cloud but may create holes in the background.
+### 根据位姿进行特定位置的视图综合
+
 ```bash
-  sh run_sparse.sh
+  sh run_with_pose.sh
 ```
-### 2. Local Gradio demo
 
-Download pretrained [ViewCrafter_25](https://huggingface.co/Drexubery/ViewCrafter_25/blob/main/model.ckpt) and put the `model.ckpt` in `checkpoints/model.ckpt`, then run:
+脚本介绍
 ```bash
-  python gradio_app.py 
+#!/usr/bin/env bash
+set -e
+
+python /home/nics/Workspace/ViewCrafter/image_process/unify_camera_intrinsics_with_crop.py \
+# input_dir替换为输入文件夹，包含三张图片和相机内参（见 d435i.yaml）
+  --input_dir "/home/nics/Workspace/ViewCrafter/input" \ 
+# output_dir替换为相对路径，输出内参归一化图片 与--image_dir一致即可
+  --output_dir "/home/nics/Workspace/ViewCrafter/test/three_unified"
+
+python /home/nics/Workspace/ViewCrafter/inference_cam0.py \
+  --image_dir test/three_unified \
+  --out_dir ./output \
+  --mode external_pose \
+# 视图综合目标参数矩阵文件
+  --ext_pose_path /home/nics/Workspace/ViewCrafter/image_process/ext_pose.json \
+# 相机外参，同一相机不需要修改，为相对位姿image_process文件夹有处理脚本，新数据可以再处理
+  --real_poses_yaml /home/nics/Workspace/ViewCrafter/image_process/cam_extrinsics.yaml \
+  --device cuda:0 \
+  --config configs/inference_pvd_1024.yaml \
+  --ckpt_path ./checkpoints/model_sparse.ckpt \
+  --model_path ./checkpoints/DUSt3R_ViTLarge_BaseDecoder_512_dpt.pth \
+  --height 576 --width 1024 --video_length 15 \
+  --bg_trd 0.2 \
+  --seed 123 \
+  --ddim_steps 50
 ```
-
-## 📈 Evaluation
-
-We provide a demo script to evaluate single-view novel view synthesis:
-```bash
-  sh run_eval.sh
-```
-The input should be a folder containing frames from your test video. We use the first frame as the reference image and the subsequent frames as target novel views.
-
-## 😉 Citation
-Please consider citing our paper if our code is useful:
-```bib
-  @article{yu2024viewcrafter,
-    title={ViewCrafter: Taming Video Diffusion Models for High-fidelity Novel View Synthesis},
-    author={Yu, Wangbo and Xing, Jinbo and Yuan, Li and Hu, Wenbo and Li, Xiaoyu and Huang, Zhipeng and Gao, Xiangjun and Wong, Tien-Tsin and Shan, Ying and Tian, Yonghong},
-    journal={arXiv preprint arXiv:2409.02048},
-    year={2024}
-  }
-```
-
-<a name="disc"></a>
-## 📢 Disclaimer
-⚠️This is an open-source research exploration rather than a commercial product, so it may not meet all your expectations. Due to the variability of the video diffusion model, you may encounter failure cases. Try using different seeds and adjusting the render configs if the results are not desirable.
-Users are free to create videos using this tool, but they must comply with local laws and use it responsibly. The developers do not assume any responsibility for potential misuse.
-****
-

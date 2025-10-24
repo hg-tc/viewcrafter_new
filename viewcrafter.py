@@ -57,6 +57,96 @@ class ViewCrafter:
             self.scene = scene.clean_pointcloud()
         else:
             self.scene = scene
+            
+        # 保存DUSt3R输出到独立文件夹
+        self.save_dust3r_output()
+
+    def save_dust3r_output(self):
+        """保存DUSt3R生成的点云和相机参数到独立文件夹"""
+        import json
+        from datetime import datetime
+        
+        # 创建DUSt3R输出文件夹
+        dust3r_output_dir = os.path.join(self.opts.save_dir, "dust3r_output")
+        os.makedirs(dust3r_output_dir, exist_ok=True)
+        
+        # 获取点云数据
+        pcd = [i.detach().cpu() for i in self.scene.get_pts3d(clip_thred=self.opts.dpt_trd)]
+        imgs = np.array(self.scene.imgs)
+        
+        # 保存点云文件
+        pcd_path = os.path.join(dust3r_output_dir, "pointcloud.ply")
+        save_pointcloud_with_normals(imgs, pcd, msk=None, save_path=pcd_path, mask_pc=False, reduce_pc=False)
+        print(f"点云已保存到: {pcd_path}")
+        
+        # 获取相机参数
+        c2ws = self.scene.get_im_poses().detach().cpu()  # 相机到世界坐标的变换矩阵
+        focals = self.scene.get_focals().detach().cpu()  # 焦距
+        principal_points = self.scene.get_principal_points().detach().cpu()  # 主点坐标
+        intrinsics = self.scene.get_intrinsics().detach().cpu()  # 内参矩阵
+        
+        # 保存相机参数
+        camera_params = {
+            "num_cameras": len(c2ws),
+            "camera_poses": c2ws.numpy().tolist(),  # 外参矩阵 (camera to world)
+            "focal_lengths": focals.numpy().tolist(),
+            "principal_points": principal_points.numpy().tolist(),
+            "intrinsics": intrinsics.numpy().tolist(),
+            "image_shapes": [img.shape[:2] for img in imgs],
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        camera_params_path = os.path.join(dust3r_output_dir, "camera_parameters.json")
+        with open(camera_params_path, 'w', encoding='utf-8') as f:
+            json.dump(camera_params, f, indent=2, ensure_ascii=False)
+        print(f"相机参数已保存到: {camera_params_path}")
+        
+        # 保存深度图
+        depth_maps = self.scene.get_depthmaps()
+        depth_dir = os.path.join(dust3r_output_dir, "depth_maps")
+        os.makedirs(depth_dir, exist_ok=True)
+        
+        for i, depth_map in enumerate(depth_maps):
+            depth_map_np = depth_map.detach().cpu().numpy()
+            depth_path = os.path.join(depth_dir, f"depth_{i:03d}.npy")
+            np.save(depth_path, depth_map_np)
+            
+            # 同时保存为可视化图像
+            depth_img_path = os.path.join(depth_dir, f"depth_{i:03d}.png")
+            depth_normalized = (depth_map_np - depth_map_np.min()) / (depth_map_np.max() - depth_map_np.min())
+            depth_img = (depth_normalized * 255).astype(np.uint8)
+            cv2.imwrite(depth_img_path, depth_img)
+        
+        print(f"深度图已保存到: {depth_dir}")
+        
+        # 保存输入图像
+        input_images_dir = os.path.join(dust3r_output_dir, "input_images")
+        os.makedirs(input_images_dir, exist_ok=True)
+        
+        for i, img in enumerate(imgs):
+            img_path = os.path.join(input_images_dir, f"input_{i:03d}.png")
+            img_uint8 = (img * 255).astype(np.uint8)
+            cv2.imwrite(img_path, cv2.cvtColor(img_uint8, cv2.COLOR_RGB2BGR))
+        
+        print(f"输入图像已保存到: {input_images_dir}")
+        
+        # 保存DUSt3R输出摘要
+        summary = {
+            "pointcloud_file": "pointcloud.ply",
+            "camera_parameters_file": "camera_parameters.json",
+            "num_points": sum(len(p.reshape(-1, 3)) for p in pcd),
+            "num_cameras": len(c2ws),
+            "image_resolution": imgs[0].shape[:2] if len(imgs) > 0 else None,
+            "dust3r_model": self.opts.model_path,
+            "processing_time": datetime.now().isoformat()
+        }
+        
+        summary_path = os.path.join(dust3r_output_dir, "summary.json")
+        with open(summary_path, 'w', encoding='utf-8') as f:
+            json.dump(summary, f, indent=2, ensure_ascii=False)
+        
+        print(f"DUSt3R输出摘要已保存到: {summary_path}")
+        print(f"所有DUSt3R输出文件已保存到: {dust3r_output_dir}")
 
     def render_pcd(self,pts3d,imgs,masks,views,renderer,device,nbv=False):
         
@@ -419,13 +509,26 @@ class ViewCrafter:
         return images, img_ori
 
     def load_initial_dir(self, image_dir):
-
-        image_files = glob.glob(os.path.join(image_dir, "*"))
+        # 仅选择图像文件并要求文件名为纯数字（如 000001.png）
+        exts = {'.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.tif', '.PNG', '.JPG', '.JPEG', '.BMP', '.TIFF', '.TIF'}
+        candidates = glob.glob(os.path.join(image_dir, "*"))
+        image_files = []
+        for p in candidates:
+            base = p.split('/')[-1]
+            name, ext = os.path.splitext(base)
+            if ext not in exts:
+                continue
+            try:
+                _ = int(name)
+            except Exception:
+                continue
+            image_files.append(p)
 
         if len(image_files) < 2:
-            raise ValueError("Input views should not less than 2.")
-        image_files = sorted(image_files, key=lambda x: int(x.split('/')[-1].split('.')[0]))
-        images = load_images(image_files, size=512,force_1024 = True)
+            raise ValueError("Input views should not less than 2 valid numeric-named images.")
+
+        image_files = sorted(image_files, key=lambda x: int(os.path.splitext(x.split('/')[-1])[0]))
+        images = load_images(image_files, size=512, force_1024=True)
 
         img_gts = []
         for i in range(len(image_files)):

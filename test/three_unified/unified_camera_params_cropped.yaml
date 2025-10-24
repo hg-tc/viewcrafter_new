@@ -1,0 +1,19 @@
+crop_region:
+  x_max: 1275
+  x_min: 9
+  y_max: 716
+  y_min: 4
+output_size:
+  height: 712
+  width: 1266
+unified_camera:
+  distortion_coeffs:
+  - 0
+  - 0
+  - 0
+  - 0
+  intrinsics:
+  - 907.2782389322916
+  - 906.6939697265625
+  - 640.1284790039062
+  - 374.79290771484375

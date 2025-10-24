@@ -1,5 +1,5 @@
 python inference.py \
---image_dir test/images_sparse/family \
+--image_dir test/three \
 --out_dir ./output \
 --mode 'sparse_view_interp' \
 --bg_trd 0.2 \

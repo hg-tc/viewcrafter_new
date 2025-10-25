@@ -144,6 +144,9 @@ mkdir -p checkpoints/
 wget https://download.europe.naverlabs.com/ComputerVision/DUSt3R/DUSt3R_ViTLarge_BaseDecoder_512_dpt.pth -P checkpoints/
 
 ```
+Download pretrained ViewCrafter_25 and put the model.ckpt in checkpoints/model.ckpt.
+https://huggingface.co/Drexubery/ViewCrafter_25/blob/main/model.ckpt
+
 > [!NOTE]
 > If you use a high PyTorch version (like torch 2.4), it may cause CUDA OOM error. Please refer to [these issues](https://github.com/Drexubery/ViewCrafter/issues/23#issuecomment-2396131121) for solutions.
 
